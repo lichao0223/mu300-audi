@@ -207,11 +207,14 @@ static void contig(void) { }
 #endif
 
 /* no line of a page taken may stay dirty in the cacheable linear map: the DSP and audio_mem's uncached mapping
- * would see it written back over them later */
+ * would see it written back over them later. Only the runs of pages taken: the unmap invalidates, which on a page
+ * still in use would throw away its owner's data, and faults where that page is mapped read-only (a retry with
+ * pages missing oopsed so on 7.3) */
 static void clean(void)
 {
 	struct platform_device *pd;
 	struct device *dev;
+	unsigned long s, e, n;
 	dma_addr_t a;
 	int i;
 
@@ -224,16 +227,18 @@ static void clean(void)
 	if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64)))
 		goto out;
 	for (i = 0; i < nr; i++) {
-		size_t len = (rg[i].end - rg[i].start) << PAGE_SHIFT;
-
 		if (rg[i].kernel_reserved)
 			continue;
-		a = dma_map_page(dev, pfn_to_page(rg[i].start), 0, len, DMA_BIDIRECTIONAL);
-		if (dma_mapping_error(dev, a)) {
-			pr_warn("could not clean the cache of range %d\n", i);
-			continue;
+		n = rg[i].end - rg[i].start;
+		for (s = find_first_bit(rg[i].got, n); s < n; s = find_next_bit(rg[i].got, n, e)) {
+			e = find_next_zero_bit(rg[i].got, n, s);
+			a = dma_map_page(dev, pfn_to_page(rg[i].start + s), 0, (e - s) << PAGE_SHIFT, DMA_BIDIRECTIONAL);
+			if (dma_mapping_error(dev, a)) {
+				pr_warn("could not clean the cache of range %d\n", i);
+				continue;
+			}
+			dma_unmap_page(dev, a, (e - s) << PAGE_SHIFT, DMA_BIDIRECTIONAL);
 		}
-		dma_unmap_page(dev, a, len, DMA_BIDIRECTIONAL);
 	}
 out:
 	platform_device_unregister(pd);

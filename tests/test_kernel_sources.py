@@ -255,5 +255,9 @@ class Reserve(unittest.TestCase):
 
     def test_taken_pages_are_cleaned_from_the_cache(self):
         src = self.SRC.read_text()
-        self.assertIn('dma_map_page(dev, pfn_to_page(rg[i].start), 0, len, DMA_BIDIRECTIONAL)', src)
-        self.assertIn('dma_unmap_page(dev, a, len, DMA_BIDIRECTIONAL)', src)
+        # only the runs of pages taken: the unmap invalidates, and a page still missing may be someone's, mapped
+        # read-only (a retry with 2304 pages missing oopsed in dcache_inval_poc on 7.3)
+        self.assertIn('find_next_zero_bit(rg[i].got, n, s)', src)
+        self.assertIn('dma_map_page(dev, pfn_to_page(rg[i].start + s), 0, (e - s) << PAGE_SHIFT, DMA_BIDIRECTIONAL)', src)
+        self.assertIn('dma_unmap_page(dev, a, (e - s) << PAGE_SHIFT, DMA_BIDIRECTIONAL)', src)
+        self.assertNotIn('pfn_to_page(rg[i].start), 0, len', src)
