@@ -6,7 +6,7 @@
 # builds of it, whose sets the tarball carries beside it (modules/<release>+<12 digits of CONFIG>/): mu300-audio-dsp
 # loads the set that fits. kernel/kits/requires: the oldest mu300-linux release these kernels belong to.
 # KEY  KREL                   CONFIG                                                            KIT                                                               MU300-LINUX
-5.4    5.4.254-gb50db5b6224c  1057cb97e0d2d7f26816e8bf7841faac1153833a01d4893cdc196b75ae6356b3  4c854422195a268bb1dca8a780d8962bb09058356a7572db836558e32799b1dc  v2026.10.28.1
-6.18   6.18.59                0011dc3826d040bdebcbe27888d91679a130eea5cc2807e20246f1ea7705a7e2  5521c0c0602dcb71f6612fe1f249e82e9891ff35d4ebd475460757b337bf23bd  v2026.10.28.1
-7.2    7.2.13                 76ec95964f82ddc126008f398cf073a3899a32bee6cc90be6b6f9768fe88a86a  4d6dfed5bd4b4e96bcff2171df7d2e759c50503fca43b4aba81e8df6a6cde8cd  v2026.10.28.1
-7.3    7.3.0                  27da7edc07c7e07d699bcd4b60e1824c5184f2f5bcfd493cf69a0aafbd0bb4c2  f4aeeca2e4bfa2ec92c9edd6b048590a086c9513313235d944444f2597c5a1d4  v2026.10.28.1
+5.4    5.4.254-gb50db5b6224c  1057cb97e0d2d7f26816e8bf7841faac1153833a01d4893cdc196b75ae6356b3  8c5e9a0d1c5999115b592f02a84e09eeb0f97f261c0cebe5e2ea0b6d11d5776f  v2026.10.29.1
+6.18   6.18.59                0c9d2bd69ceeebfb5808fb18242a481e1917fd0141ba846522521bd44dfc1772  dc2e5198b626b1b4f19557f50460be335a9a513d2d2c5498d8b168f96bfe3f96  v2026.10.29.1
+7.2    7.2.13                 93b5404f8a5ddfdd2e037264b51d45c383e8abbf79a61679c93be34e05ae8a0f  7181e878fd6d32084550718b6e2cdb96b466d65f18da82cda61b2da9771f8df3  v2026.10.29.1
+7.3    7.3.0                  96ce1510a3687333a2b3683b97beb3922c2b28b699f8e023de47abd4bb12716f  b4e77db32cce2f76a71e51ae95642ad8fc47279c693a11c0e0a7a5ff664a5225  v2026.10.29.1
