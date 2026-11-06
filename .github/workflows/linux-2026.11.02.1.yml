@@ -1,0 +1,162 @@
+name: Audio for Linux v2026.11.02.1
+
+on:
+  push:
+    branches: [ci/audio-v2026.11.02.1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-v2026.11.02.1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LINUX_TAG: v2026.11.02.1
+  LINUX_COMMIT: 041819a4c75e9244fa42e1e405212f8d61e5fed5
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dash busybox >/dev/null
+          cd tests
+          python3 -m unittest discover -s . -v
+
+  drivers:
+    needs: tests
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ['5.4', '6.18', '7.3']
+    env:
+      KEY: ${{ matrix.kernel }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: dikeckaan/mu300-linux
+          ref: ${{ env.LINUX_COMMIT }}
+          path: mu300-linux
+          persist-credentials: false
+      - name: Read the published kernel
+        run: |
+          KIT_DIR="$RUNNER_TEMP/kits"
+          echo "KIT_DIR=$KIT_DIR" >> "$GITHUB_ENV"
+          case "$KEY" in
+            5.4) bundle=mu300-kernel.tar.gz ;;
+            *) bundle=mu300-kernel-$KEY.tar.gz ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/published/kernel" "$KIT_DIR"
+          gh release download "$LINUX_TAG" --repo dikeckaan/mu300-linux \
+            --pattern "$bundle" --pattern SHA256SUMS --dir "$RUNNER_TEMP/published"
+          (
+            cd "$RUNNER_TEMP/published"
+            sha256sum --ignore-missing --check SHA256SUMS
+            tar -xzf "$bundle" -C kernel
+            echo "RELEASE_BUNDLE_SHA=$(sha256sum "$bundle" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          )
+          python3 kernel/kits/release-info.py "$RUNNER_TEMP/published/kernel" "$KEY" | tee -a "$GITHUB_ENV"
+      - uses: actions/cache/restore@v4
+        id: kit
+        with:
+          path: ${{ env.KIT_DIR }}
+          key: audio-kit-${{ env.LINUX_COMMIT }}-${{ matrix.kernel }}-${{ env.RELEASE_BUNDLE_SHA }}-${{ hashFiles('kernel/kits/make-kit-*.sh') }}
+      - name: Rebuild the vendor kernel and make its kit
+        if: matrix.kernel == '5.4' && steps.kit.outputs.cache-hit != 'true'
+        run: |
+          sudo -E sh mu300-linux/kernel/build-all.sh
+          sudo docker run --rm -v mu300-kernel:/src:ro \
+            -v "$PWD/kernel/kits:/scripts:ro" -v "$RUNNER_TEMP/published/kernel:/published:ro" \
+            -v "$KIT_DIR:/out" mu300-kbuild \
+            bash /scripts/make-kit-5.4.sh "$LINUX_TAG" /published/modules
+      - name: Rebuild the mainline kernel and make its kit
+        if: matrix.kernel != '5.4' && steps.kit.outputs.cache-hit != 'true'
+        run: |
+          sudo docker build -t mu300-mainline-build mu300-linux/upstream
+          sudo docker volume create mu300-mainline
+          sudo docker run --rm -e KV="$KV" -v mu300-mainline:/src \
+            -v "$PWD/mu300-linux/upstream:/work" mu300-mainline-build bash /work/build.sh
+          sudo docker run --rm -e KV="$KV" -v mu300-mainline:/src \
+            -v "$PWD/mu300-linux/upstream:/work" mu300-mainline-build \
+            bash /work/build-modules.sh wcn_bsp sprd_modem
+          sudo docker run --rm -e RELEASE_SIPC_CORE=/published/modules/sipc-core.ko \
+            -v mu300-mainline:/src -v "$PWD/mu300-linux:/m:ro" \
+            -v "$PWD/kernel/kits:/scripts:ro" -v "$RUNNER_TEMP/published/kernel:/published:ro" \
+            -v "$KIT_DIR:/out" mu300-mainline-build \
+            bash /scripts/make-kit-mainline.sh "$KV" "$KEY" "$LINUX_TAG"
+      - name: Check the kit against the published kernel
+        run: |
+          tar -xJOf "$KIT_DIR/kit-$KEY.tar.xz" "kit-$KEY/KIT" > "$RUNNER_TEMP/KIT"
+          cat "$RUNNER_TEMP/KIT"
+          grep -Fxq "KEY=$KEY" "$RUNNER_TEMP/KIT"
+          grep -Fxq "KREL=$KREL" "$RUNNER_TEMP/KIT"
+          grep -Fxq "CONFIG=$RELEASE_CONFIG" "$RUNNER_TEMP/KIT"
+          grep -Fxq "TAG=$LINUX_TAG" "$RUNNER_TEMP/KIT"
+          kit_sha=$(sha256sum "$KIT_DIR/kit-$KEY.tar.xz" | cut -d' ' -f1)
+          printf '%s %s %s %s %s\n' "$KEY" "$KREL" "$RELEASE_CONFIG" "$kit_sha" "$LINUX_TAG" > kernel/kits/kits.lock
+          printf '%s\n' "$LINUX_TAG" > kernel/kits/requires
+      # Save before compiling audio: a driver fix should not rebuild the whole kernel.
+      - uses: actions/cache/save@v4
+        if: steps.kit.outputs.cache-hit != 'true'
+        with:
+          path: ${{ env.KIT_DIR }}
+          key: ${{ steps.kit.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-kit-${{ matrix.kernel }}
+          path: ${{ env.KIT_DIR }}/kit-*.tar.xz
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+      - name: Compile audio against the verified kit
+        run: |
+          sudo -E sh kernel/build.sh "$KEY"
+          mkdir -p out/target-metadata
+          cp kernel/kits/kits.lock "out/target-metadata/kits-$KEY.lock"
+          cat "out/modules/$KEY/KERNEL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-modules-${{ matrix.kernel }}
+          path: |
+            out/modules/
+            out/target-metadata/
+          if-no-files-found: error
+
+  package:
+    needs: drivers
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: audio-modules-*
+          path: out
+          merge-multiple: true
+      - name: Package the audio extra
+        run: |
+          cat out/target-metadata/kits-*.lock > kernel/kits/kits.lock
+          printf '%s\n' "$LINUX_TAG" > kernel/kits/requires
+          for t in pcmhost ctlset hfp; do sh "src/$t/build.sh"; done
+          sh tools/make-extra.sh out/release v0.0.0-dev
+          cp kernel/kits/kits.lock out/release/kits.lock
+          printf 'audio=%s\nmu300-linux=%s\nlinux-commit=%s\n' \
+            "$GITHUB_SHA" "$LINUX_TAG" "$LINUX_COMMIT" > out/release/BUILD_INFO
+          cat out/release/kits.lock
+          cat out/release/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mu300-audio-v2026.11.02.1
+          path: out/release/
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error

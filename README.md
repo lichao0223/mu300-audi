@@ -33,6 +33,13 @@ Reports go to the [mu300-linux issues](https://github.com/dikeckaan/mu300-linux/
     sh tools/make-extra.sh out/release v1.0.0                 # out/release/mu300-audio.tar.gz
     cd tests && python3 -m unittest discover -s .
 
+For MU300 Linux **v2026.11.02.1**, push branch `ci/audio-v2026.11.02.1` to run
+**Audio for Linux v2026.11.02.1** in GitHub Actions. It rebuilds the release's 5.4, 6.18 and 7.3 kernels on arm64,
+checks each kit against the published kernel, then builds the audio drivers and tools. Verified kits are cached.
+Download the artifact **mu300-audio-v2026.11.02.1** for `mu300-audio.tar.gz`, `SHA256SUMS`, `VERSIONS`, the generated
+`kits.lock` and source commit IDs (`BUILD_INFO`); artifacts are kept for 14 days. Use the on-device `--from DIR`
+installation above with the extracted files. Kernel and module compilation happens entirely in CI.
+
 ## Credits
 
 * **kano (kanoqwq)** and [e5-linux](https://github.com/kanoqwq/e5-linux) (MIT, © 2026 Enceka): parts of this work
