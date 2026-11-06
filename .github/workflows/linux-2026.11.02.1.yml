@@ -119,8 +119,8 @@ jobs:
           if-no-files-found: error
       - name: Compile audio against the verified kit
         run: |
-          sudo -E sh kernel/build.sh "$KEY"
           mkdir -p out/target-metadata
+          sudo -E sh kernel/build.sh "$KEY"
           cp kernel/kits/kits.lock "out/target-metadata/kits-$KEY.lock"
           cat "out/modules/$KEY/KERNEL"
       - uses: actions/upload-artifact@v4
